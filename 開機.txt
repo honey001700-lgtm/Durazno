@@ -6,5 +6,6 @@ python Embed\Embed.py
 python main.py
 python bot.py
 
-venv\Scripts\activate
-deactivate
+python -m venv venv
+source venv/bin/activate # 或 .\venv\Scripts\activate
+pip install -r requirements.txt
