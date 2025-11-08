@@ -1,0 +1,10 @@
+python AIbot\main.py
+python Discord-Music-Bot-main\bot.py
+
+python Embed\Embed.py
+
+python main.py
+python bot.py
+
+venv\Scripts\activate
+deactivate

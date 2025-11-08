@@ -334,23 +334,21 @@ class MusicPlayer:
         if not self.current and self.queue:
             await self._play_next()
 
-    # ... (前面的程式碼保持不變) ...
-
     async def _play_next(self) -> None:
         async with self._lock:
             if not self.queue:
                 self.current = None
-                # Don't send "播放清單結束" here directly.
-                # Let the cleanup message handle it, or disconnect gracefully.
-                await self._maybe_cleanup_message(is_queue_empty=True) 
+                await self._maybe_cleanup_message()
                 
+                # Check if voice is connected before attempting to stop it
                 if self.voice and self.voice.is_connected():
+                    # The inactivity_check might call stop, leading to a loop if not careful.
+                    # This direct call to disconnect avoids triggering the full stop logic again.
                     if self._inactivity_timer and not self._inactivity_timer.done():
-                        self._inactivity_timer.cancel()
+                        self._inactivity_timer.cancel() # Stop the inactivity timer if queue is empty
                     await self.voice.disconnect(force=True)
-                    # The message "播放清單結束了喔...但我們的故事還沒結束...💖" should now be handled by _maybe_cleanup_message
-                    # if self.text_channel:
-                    #      await self.text_channel.send("播放清單結束了喔...但我們的故事還沒結束...💖")
+                    if self.text_channel:
+                         await self.text_channel.send("播放清單結束了喔...但我們的故事還沒結束...💖")
                 self.reset_inactivity_timer()
                 return
 
@@ -428,7 +426,6 @@ class MusicPlayer:
 
     async def stop(self, interaction_or_ctx, *, ephemeral: bool = False) -> None:
         voice = self.voice
-        print(f"[Stop] Initiating stop command. Voice client connected: {voice and voice.is_connected()}")
 
         response_target = interaction_or_ctx
         is_interaction_deferred = False 
@@ -437,7 +434,6 @@ class MusicPlayer:
             await interaction_or_ctx.response.defer(ephemeral=ephemeral)
             response_target = interaction_or_ctx.followup
             is_interaction_deferred = True 
-        print(f"[Stop] Interaction deferred: {is_interaction_deferred}")
 
         if self._inactivity_timer:
             self._inactivity_timer.cancel()
@@ -447,49 +443,43 @@ class MusicPlayer:
         if voice and voice.is_playing():
             voice.stop() 
             print("[Stop] Current playback stopped.")
-        else:
-            print("[Stop] No current playback to stop or voice client not available.")
 
         exit_audio_path = "Discord-Music-Bot-main/music/晚安.mp3" 
-        print(f"[Stop] Checking goodbye sound path: {exit_audio_path}. Exists: {os.path.exists(exit_audio_path)}")
         
         goodbye_sound_played = False 
 
         if voice and voice.is_connected() and os.path.exists(exit_audio_path):
-            print(f"[Stop] Voice client connected and goodbye sound file exists. Attempting to play goodbye sound.")
+            print(f"[Stop] Attempting to play goodbye sound: {exit_audio_path}")
             try:
                 finished_playing_event = asyncio.Event()
 
                 def after_exit_sound(error: Optional[Exception]) -> None:
                     if error:
-                        print(f'[Stop] Error playing goodbye sound in callback: {error}')
+                        print(f'[Stop] Error playing goodbye sound: {error}')
                     else:
-                        print("[Stop] Goodbye sound finished playing in callback.")
+                        print("[Stop] Goodbye sound finished playing.")
                     finished_playing_event.set()
 
                 source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(exit_audio_path))
                 
-                # Double check connection right before playing
+                # Check if voice is still connected before playing, in case it disconnected mid-process
                 if not voice.is_connected():
-                    print("[Stop] Voice client disconnected just before playing goodbye sound. Skipping.")
-                    finished_playing_event.set()
+                    print("[Stop] Voice client disconnected before playing goodbye sound. Skipping.")
+                    finished_playing_event.set() # If already disconnected, immediately set event
                 else:
                     voice.play(source, after=after_exit_sound)
                     goodbye_sound_played = True 
-                    print("[Stop] Goodbye sound initiated. Waiting for completion...")
                     try:
+                        # Wait for the sound to finish playing, with a timeout
                         await asyncio.wait_for(finished_playing_event.wait(), timeout=10.0) 
                         print("[Stop] Successfully waited for goodbye sound to complete.")
                     except asyncio.TimeoutError:
-                        print("[Stop] Waiting for goodbye sound timed out (10s). Proceeding with disconnection.")
-                    except Exception as e_wait:
-                        print(f"[Stop] Error while waiting for goodbye sound: {e_wait}")
+                        print("[Stop] Waiting for goodbye sound timed out. Proceeding with disconnection.")
 
             except Exception as e:
-                print(f"[Stop] Unexpected error during goodbye sound playback attempt: {e}")
-        else:
-            print("[Stop] Skipping goodbye sound: Voice not connected or file not found.")
+                print(f"[Stop] Unexpected error during goodbye sound playback: {e}")
         
+        # Now, perform disconnection after the sound has played (or timed out/failed)
         if voice and voice.is_connected():
             await voice.disconnect(force=True)
             print("[Stop] Disconnected from voice channel.")
@@ -500,126 +490,16 @@ class MusicPlayer:
             self.queue.clear()
             self.current = None
             print("[Stop] Queue and current track cleared.")
-        
-        await self._maybe_cleanup_message(is_manual_stop=True) 
+        await self._maybe_cleanup_message()
         print("[Stop] Control message cleaned up.")
         
+        # Determine the final response message
         final_message = "停止播放並清空播放清單了喔...你還會回來找我的對吧...？💖"
         if goodbye_sound_played:
             final_message = "我休息了喔...期待再見面...💖" 
         
         await _respond(response_target, final_message, ephemeral=ephemeral)
         print("[Stop] Final response sent.")
-
-
-    async def play_previous(self, interaction_or_ctx, *, ephemeral: bool = False) -> None:
-        if not self.history:
-            await _respond(interaction_or_ctx, "沒有上一首歌可以播放喔...我記得你沒聽過這一首...", ephemeral=ephemeral)
-            return
-        last = self.history.pop()
-        if self.current:
-            await self.enqueue(self.current.clone(), at_front=True)
-        self.current = None
-        await self.enqueue(last.clone(), at_front=True)
-        if self.voice and self.voice.is_playing():
-            self.voice.stop()
-        await _respond(interaction_or_ctx, f"正在重播 **{last.title}** 喔...你喜歡的我都記得...💖", ephemeral=ephemeral)
-        self.reset_inactivity_timer()
-
-    async def shuffle(self) -> None:
-        async with self._lock:
-            random.shuffle(self.queue)
-        self.reset_inactivity_timer()
-
-    async def set_repeat_mode(self, mode: RepeatMode) -> RepeatMode:
-        self.repeat_mode = mode
-        self.reset_inactivity_timer()
-        return mode
-
-    async def set_volume(self, volume: float) -> float:
-        self.volume = max(0.0, min(volume, 2.0))
-        voice = self.voice
-        if voice and voice.source and isinstance(voice.source, discord.PCMVolumeTransformer):
-            voice.source.volume = self.volume
-        self.reset_inactivity_timer()
-        return self.volume
-
-    async def adjust_volume(self, delta: float) -> float:
-        return await self.set_volume(self.volume + delta)
-
-    async def _send_now_playing(self, track: Track, *, force_new: bool = False) -> None:
-        channel = self.text_channel
-        if channel is None:
-            return
-        embed = discord.Embed(title="正在播放喔...🎵", description=f"[{track.title}]({track.webpage_url})", color=0x55acee)
-        embed.add_field(name="來源", value=track.source, inline=True)
-        duration = coerce_duration(track.duration)
-        if duration:
-            minutes, seconds = divmod(duration, 60)
-            embed.add_field(name="長度", value=f"{minutes}:{seconds:02d}", inline=True)
-        embed.add_field(name="點歌人", value=f"<@{track.requester_id}> (是你點的嗎...？)", inline=True)
-        embed.add_field(name="音量", value=f"{int(self.volume * 100)}%", inline=True)
-        if track.thumbnail:
-            embed.set_thumbnail(url=track.thumbnail)
-        embed.set_footer(text=f"重複模式: {self.repeat_mode.value} | 播放清單: {len(self.queue)} 首歌 (你還會繼續聽的對吧...？)")
-
-        self.controls_view = PlayerControls(self)
-        if force_new and self.control_message:
-            try:
-                await self.control_message.delete()
-            except discord.HTTPException:
-                pass
-            self.control_message = None
-        if self.control_message:
-            try:
-                await self.control_message.edit(embed=embed, view=self.controls_view)
-                return
-            except discord.HTTPException:
-                self.control_message = None
-        self.control_message = await channel.send(embed=embed, view=self.controls_view)
-        self.reset_inactivity_timer()
-
-    async def _maybe_cleanup_message(self, *, is_queue_empty: bool = False, is_manual_stop: bool = False) -> None:
-        if self.control_message:
-            try:
-                # Decide message based on context
-                if is_manual_stop:
-                    message_content = "停止播放並清空播放清單了喔...你還會回來找我的對吧...？💖"
-                elif is_queue_empty:
-                    message_content = "播放清單結束了喔...但我們的故事還沒結束...💖"
-                else: # Default cleanup if neither specific condition
-                    message_content = "我休息了喔...期待再見面...💖" 
-                
-                await self.control_message.edit(content=message_content, embed=None, view=None)
-            except discord.HTTPException:
-                pass # If message already deleted or inaccessible, just ignore
-            self.control_message = None # Ensure it's cleared after attempted cleanup
-
-    def formatted_queue(self) -> List[str]:
-        formatted = []
-        for idx, track in enumerate(self.queue, start=1):
-            minutes = seconds = 0
-            duration = coerce_duration(track.duration)
-            if duration:
-                minutes, seconds = divmod(duration, 60)
-            duration_text = f"{minutes}:{seconds:02d}" if duration else "直播中"
-            formatted.append(f"{idx}. {track.title} ({duration_text})")
-        return formatted
-
-
-async def _respond(target, message: str, *, ephemeral: bool = False) -> None:
-    if isinstance(target, discord.Interaction):
-        if not target.response.is_done():
-            await target.response.send_message(message, ephemeral=ephemeral)
-        else:
-            await target.followup.send(message, ephemeral=ephemeral)
-    elif isinstance(target, discord.Webhook):
-        await target.send(message, ephemeral=ephemeral)
-    else:
-        # Check if target is None (e.g., when called from inactivity_check without a real context)
-        # and if it has a 'send' method (e.g., text_channel)
-        if target and hasattr(target, 'send'):
-            await target.send(message)
 
 
     async def play_previous(self, interaction_or_ctx, *, ephemeral: bool = False) -> None:
