@@ -20,6 +20,7 @@ YTDL_OPTIONS = {
     "default_search": "auto",
     "extract_flat": "in_playlist",
     "source_address": "0.0.0.0",
+    "cookiesfrombrowser": "chrome",
 }
 
 FFMPEG_BEFORE_OPTS = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
