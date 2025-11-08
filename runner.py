@@ -5,6 +5,8 @@ import os
 from flask import Flask, jsonify
 from dotenv import load_dotenv # 用於本地開發時加載 .env
 
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 # --- Flask 應用初始化 ---
 app = Flask(__name__)
 

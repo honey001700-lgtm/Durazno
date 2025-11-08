@@ -6,6 +6,10 @@ python Embed\Embed.py
 python main.py
 python bot.py
 
+.\venv_new\Scripts\Activate.ps1
+
 python -m venv venv
-source venv/bin/activate # 或 .\venv\Scripts\activate
+.\venv\Scripts\activate
 pip install -r requirements.txt
+
+Python: Select Interpreter
