@@ -1,0 +1,268 @@
+import discord
+from discord.ext import commands
+import json
+import os
+from dotenv import load_dotenv
+import asyncio
+from datetime import datetime, timezone
+
+# 加载 .env 文件中的环境变量
+load_dotenv()
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+# 检查 Discord Bot TOKEN 是否已加载
+if TOKEN is None:
+    print("Error: DISCORD_TOKEN not found in .env file.")
+    exit()
+
+# 配置 Discord Intents
+intents = discord.Intents.default()
+# 如果需要读取消息内容、成员信息等更多权限，请在此处添加：
+# intents.message_content = True 
+# intents.members = True 
+
+# 初始化 Bot
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# 配置文件名
+SAVED_MESSAGE_IDS_FILE = "saved_message_ids.json"
+AUTO_SEND_CONFIG_FILE = "auto_send_config.json"
+
+# 用于存储活跃消息对象的字典，避免每次都从 Discord API 获取
+active_messages = {}
+
+def load_json_file(file_path, is_embed_content=False):
+    """
+    加载 JSON 文件的辅助函数。
+    支持相对路径和判断文件类型。
+    """
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    full_path = ""
+    
+    # 根据文件类型构造完整路径
+    if is_embed_content or file_path in [SAVED_MESSAGE_IDS_FILE, AUTO_SEND_CONFIG_FILE]:
+        full_path = os.path.join(base_dir, file_path)
+    else:
+        full_path = file_path # 如果是绝对路径或特定情况，直接使用
+    
+    full_path = os.path.normpath(full_path) # 规范化路径
+
+    try:
+        if not os.path.exists(full_path):
+            print(f"Warning: Configuration file not found at {full_path}. Returning empty data.")
+            return [] if file_path == AUTO_SEND_CONFIG_FILE else {} 
+        with open(full_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        print(f"Error: Could not decode JSON from {full_path}. Check file format.")
+        return [] if file_path == AUTO_SEND_CONFIG_FILE else {}
+    except Exception as e:
+        print(f"Error loading {full_path}: {e}")
+        return [] if file_path == AUTO_SEND_CONFIG_FILE else {}
+
+def save_json_file(data, file_path):
+    """
+    保存数据到 JSON 文件的辅助函数。
+    """
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    full_path = os.path.join(base_dir, file_path)
+    full_path = os.path.normpath(full_path)
+    try:
+        with open(full_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"Error saving {full_path}: {e}")
+
+async def send_or_update_embed(channel_id: int, embed_root_json_data: dict, message_tag: str):
+    """
+    发送或更新 Discord 频道中的 Embed 消息。
+    - channel_id: 目标频道的 ID。
+    - embed_root_json_data: 包含 Embed 数据的根 JSON 字典。
+    - message_tag: 消息的唯一标识符，用于保存和查找消息 ID。
+    """
+    channel = bot.get_channel(channel_id)
+    if not channel:
+        print(f"Error: Channel with ID {channel_id} (tag: {message_tag}) not found.")
+        return False
+
+    message_content = embed_root_json_data.get("content", None)
+    embeds_json_list = embed_root_json_data.get("embeds", [])
+    components_data = embed_root_json_data.get("components", []) # 获取组件数据
+
+    discord_embeds = []
+    for embed_json_original in embeds_json_list:
+        # 创建 embed_json 的可变副本，以避免修改原始数据
+        embed_json = embed_json_original.copy()
+
+        if "timestamp" in embed_json:
+            timestamp_value = embed_json["timestamp"]
+            print(f"Debug: Timestamp value for tag '{message_tag}': {timestamp_value} (Type: {type(timestamp_value)})")
+
+            if isinstance(timestamp_value, str):
+                try:
+                    # 确保时间戳字符串以 'Z' 结尾表示 UTC 或包含时区偏移
+                    # fromisoformat 能够处理 'Z' 并将其转换为 '+00:00'
+                    if not timestamp_value.endswith('Z') and not ('+' in timestamp_value or '-' in timestamp_value and len(timestamp_value.split('-')[-1]) == 4):
+                        timestamp_value += 'Z' # 如果没有时区信息也没有 'Z'，则假定为 UTC
+
+                    dt_object = datetime.fromisoformat(timestamp_value)
+                    
+                    # 确保 datetime 对象是时区感知的并转换为 UTC
+                    if dt_object.tzinfo is None:
+                        dt_object = dt_object.replace(tzinfo=timezone.utc)
+                    else:
+                        dt_object = dt_object.astimezone(timezone.utc)
+                    
+                    embed_json["timestamp"] = dt_object
+                except ValueError as e:
+                    print(f"Warning: Could not parse timestamp '{timestamp_value}' for tag '{message_tag}': {e}. Removing timestamp.")
+                    del embed_json["timestamp"]
+                except Exception as e:
+                    print(f"Unexpected error processing timestamp for tag '{message_tag}': {e}. Removing timestamp.")
+                    del embed_json["timestamp"]
+            else:
+                print(f"Warning: Timestamp for tag '{message_tag}' is not a string (Type: {type(timestamp_value)}). Removing timestamp.")
+                del embed_json["timestamp"]
+
+        try:
+            discord_embeds.append(discord.Embed.from_dict(embed_json))
+        except Exception as e:
+            print(f"Error creating discord.Embed from JSON for tag '{message_tag}': {e}. Skipping this embed.")
+            return False # 如果一个 embed 失败，则不发送消息
+
+    view = None
+    if components_data:
+        view = discord.ui.View()
+        for component_row in components_data:
+            if component_row.get("type") == 1: # Action Row (操作行)
+                for button_data in component_row.get("components", []):
+                    if button_data.get("type") == 2: # Button (按钮)
+                        style_map = {1: discord.ButtonStyle.primary,
+                                     2: discord.ButtonStyle.secondary,
+                                     3: discord.ButtonStyle.success,
+                                     4: discord.ButtonStyle.danger,
+                                     5: discord.ButtonStyle.link}
+                        style = style_map.get(button_data.get("style"), discord.ButtonStyle.primary)
+                        
+                        # 处理 URL 按钮和交互按钮
+                        if button_data.get("url"):
+                            button = discord.ui.Button(
+                                style=style,
+                                label=button_data.get("label"),
+                                url=button_data.get("url"),
+                                emoji=button_data.get("emoji", {}).get("name"),
+                                disabled=button_data.get("disabled", False)
+                            )
+                        else:
+                            # 对于非 URL 按钮，需要 custom_id 用于交互。
+                            # 这里提供一个默认的 custom_id。
+                            # 你需要在其他地方实现按钮交互逻辑。
+                            button = discord.ui.Button(
+                                style=style,
+                                label=button_data.get("label"),
+                                custom_id=button_data.get("custom_id", f"{message_tag}_button_{button_data.get('label', 'no_label').replace(' ', '_').lower()}"),
+                                emoji=button_data.get("emoji", {}).get("name"),
+                                disabled=button_data.get("disabled", False)
+                            )
+                        view.add_item(button)
+
+    if not discord_embeds and not message_content:
+        print(f"Warning: No valid embeds or content found for tag '{message_tag}'. Skipping.")
+        return False
+
+    saved_message_ids = load_json_file(SAVED_MESSAGE_IDS_FILE)
+    saved_message_id_for_tag = saved_message_ids.get(message_tag)
+    current_message = active_messages.get(message_tag)
+
+    # 尝试从内存中的活跃消息对象更新
+    if current_message:
+        try:
+            await current_message.edit(content=message_content, embeds=discord_embeds, view=view)
+            print(f"Embed for tag '{message_tag}' (ID: {current_message.id}) updated from memory.")
+            return True
+        except discord.NotFound:
+            print(f"Message in memory for tag '{message_tag}' (ID: {current_message.id}) not found, trying saved ID.")
+            current_message = None # 重置，以便尝试从文件加载
+        except Exception as e:
+            print(f"Error updating message from memory for tag '{message_tag}': {e}, trying saved ID.")
+            current_message = None
+
+    # 如果内存中没有，尝试从保存的文件中获取消息 ID 并从 Discord API 更新
+    if saved_message_id_for_tag and current_message is None:
+        try:
+            message_from_discord = await channel.fetch_message(saved_message_id_for_tag)
+            await message_from_discord.edit(content=message_content, embeds=discord_embeds, view=view)
+            active_messages[message_tag] = message_from_discord # 更新内存中的活跃消息对象
+            print(f"Embed for tag '{message_tag}' (ID: {saved_message_id_for_tag}) updated from Discord.")
+            return True
+        except discord.NotFound:
+            print(f"Old message for tag '{message_tag}' (ID: {saved_message_id_for_tag}) not found, sending new embed.")
+            # 如果消息不存在，则从保存的 ID 列表中删除
+            if message_tag in saved_message_ids:
+                del saved_message_ids[message_tag]
+                save_json_file(saved_message_ids, SAVED_MESSAGE_IDS_FILE)
+        except Exception as e:
+            print(f"Error fetching or editing old message for tag '{message_tag}' (ID: {saved_message_id_for_tag}): {e}, sending new embed.")
+            # 如果出现其他错误，也删除旧 ID 并发送新消息
+            if message_tag in saved_message_ids:
+                del saved_message_ids[message_tag]
+                save_json_file(saved_message_ids, SAVED_MESSAGE_IDS_FILE)
+
+    # 如果以上都失败，则发送一条全新的消息
+    if message_tag not in active_messages: # 再次检查以确保没有新的消息对象被存储
+        try:
+            new_message = await channel.send(content=message_content, embeds=discord_embeds, view=view)
+            saved_message_ids[message_tag] = new_message.id
+            save_json_file(saved_message_ids, SAVED_MESSAGE_IDS_FILE)
+            active_messages[message_tag] = new_message # 将新消息对象存储到内存
+            print(f"New Embed for tag '{message_tag}' sent (ID: {new_message.id}).")
+            return True
+        except Exception as e:
+            print(f"Error sending final new embed for tag '{message_tag}': {e}")
+            return False
+    return False # 如果所有尝试都失败，则返回 False
+
+@bot.event
+async def on_ready():
+    """
+    Bot 启动并成功连接到 Discord 时触发的事件。
+    """
+    print(f"Logged in as {bot.user}")
+    print("Bot is ready to process auto-send embeds.")
+
+    # 加载自动发送的配置
+    auto_send_configs = load_json_file(AUTO_SEND_CONFIG_FILE)
+    if not auto_send_configs:
+        print(f"No auto-send configurations found in {AUTO_SEND_CONFIG_FILE}. No embeds will be automatically sent.")
+        return
+
+    print(f"Processing {len(auto_send_configs)} auto-send embed configurations...")
+    for config in auto_send_configs:
+        channel_id = config.get("channel_id")
+        json_file_path = config.get("json_file_path")
+        message_tag = config.get("message_tag")
+
+        # 检查配置是否完整
+        if not all([channel_id, json_file_path, message_tag]):
+            print(f"Warning: Incomplete auto-send configuration found: {config}. Skipping.")
+            continue
+
+        print(f"Attempting to process Embed (tag: '{message_tag}') from '{json_file_path}' to channel '{channel_id}'...")
+        # 加载 Embed 的 JSON 数据
+        embed_root_json_data = load_json_file(json_file_path, is_embed_content=True) 
+        if not isinstance(embed_root_json_data, dict) or not embed_root_json_data:
+            print(f"Error: JSON file '{json_file_path}' for tag '{message_tag}' is invalid or empty. Skipping.")
+            continue
+
+        # 等待 bot 完全准备好（如缓存加载完毕）再发送消息
+        await bot.wait_until_ready()
+        success = await send_or_update_embed(channel_id, embed_root_json_data, message_tag)
+        if success:
+            print(f"Embed (tag: '{message_tag}') processed successfully.")
+        else:
+            print(f"Embed (tag: '{message_tag}') failed to process.")
+
+    print("All auto-send embed processing complete.")
+
+# 运行 Bot
+bot.run(TOKEN)

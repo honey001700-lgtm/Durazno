@@ -1,0 +1,146 @@
+# main.py (或你的 bot 主程式檔案)
+
+import discord
+from discord.ext import commands
+import requests
+from dotenv import load_dotenv
+import os
+import asyncio
+import random
+import json
+
+# 從 evil_users.py 導入惡徒相關功能
+from evil_users import is_evil_user, contains_evil_keyword, get_evil_response 
+
+# 從 special_users_manager.py 導入特別使用者相關功能
+from special_users_manager import load_special_users_data, handle_special_user_message # 導入新函數
+
+
+load_dotenv()
+
+# 在程式啟動時載入特別使用者資料
+SPECIAL_USERS_DATA = load_special_users_data()
+
+# Environment variable checks
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not DISCORD_TOKEN or not GEMINI_API_KEY:
+    exit("錯誤：DISCORD_TOKEN 或 GEMINI_API_KEY 環境變數未設定。")
+
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+
+# Load bot personality
+BOT_PERSONALITY = ""
+try:
+    with open("personality.txt", "r", encoding="utf-8") as f:
+        BOT_PERSONALITY = f.read().strip()
+    if not BOT_PERSONALITY:
+        print("警告：'personality.txt' 檔案為空，使用預設性格。")
+except (FileNotFoundError, Exception) as e:
+    print(f"錯誤：讀取性格檔案失敗: {e}，使用預設性格。")
+BOT_PERSONALITY = BOT_PERSONALITY or "色氣的兔女郎，今年26歲，成天想和別人性愛。"
+
+
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# 讓 query_gemini 保持在 main.py 中
+def query_gemini(user_prompt: str, user_name: str, user_style: str = None) -> str:
+    adjusted_personality = f"{BOT_PERSONALITY}\n請以「{user_style}」的風格來回答。" if user_style and user_style != "普通" else BOT_PERSONALITY
+    full_prompt = f"{adjusted_personality}\n以下是使用者 {user_name} 說的話：{user_prompt}\n請盡量以 {user_name} 稱呼對方。"
+    headers = {"Content-Type": "application/json"}
+    payload = {"contents": [{"role": "user", "parts": [{"text": full_prompt}]}]}
+
+    try:
+        response = requests.post(GEMINI_URL, headers=headers, json=payload)
+        response.raise_for_status()
+        text = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        return text or "哼…我才不想回答你呢！"
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP 錯誤: {http_err} - 回應: {response.text}")
+        return "哼！你是不是做了什麼奇怪的事啊？不然握才不會壞掉呢！討厭啦～ (撇頭)"
+    except Exception as e:
+        print(f"呼叫 Gemini AI 發生錯誤: {e}")
+        return "真是的！怎麼又出問題了啦～ 我才不是故意的喔！笨蛋… (嘟嘴)"
+
+@bot.event
+async def on_ready():
+    print(f"{bot.user} 已上線！")
+    await bot.change_presence(activity=discord.Game(name="在等你呼喚我呢...哼！"))
+
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author == bot.user: return
+
+    triggered = False
+    prompt_content = message.content
+    user_display_name = message.author.display_name
+
+    # Check for mentions
+    if bot.user in message.mentions:
+        triggered = True
+        for mention in message.mentions:
+            prompt_content = prompt_content.replace(f"<@!{mention.id}>", "").replace(f"<@{mention.id}>", "")
+        prompt_content = prompt_content.strip()
+
+    # Check for replies
+    if message.reference:
+        try:
+            referenced_message = await message.channel.fetch_message(message.reference.message_id)
+            if referenced_message and referenced_message.author == bot.user:
+                triggered = True
+        except discord.NotFound:
+            print(f"警告：回覆的訊息 (ID: {message.reference.message_id}) 未找到。")
+        except Exception as e:
+            print(f" fetching referenced message: {e}")
+
+
+    if triggered:
+        # --- 惡徒系統檢查 ---
+        if is_evil_user(message.author.id): return
+        
+        if message.reference:
+            try:
+                ref_msg = await message.channel.fetch_message(message.reference.message_id)
+                if ref_msg and is_evil_user(ref_msg.author.id):
+                    return
+            except discord.NotFound:
+                pass
+
+        if any(is_evil_user(user.id) for user in message.mentions): return
+        if contains_evil_keyword(message.content):
+            await message.reply(get_evil_response(), mention_author=False); return
+
+        # Default empty prompt responses list (可以考慮移到一個獨立的 utils.py 檔案)
+        empty_prompt_responses = ["哼！沒事不要 @ 我啦，我又不是24hr線上陪睡的笨蛋~ (撇頭)", "真是的，什麼都不說就 @ 我，很無聊欸！你想我想到沒詞了嗎？(嘟嘴)", "嗯？有什麼事就快說啦！我時間很寶貴的，才不是專門等你的呢！", "呀～什麼話都不講是想怎樣？該不會是…想跟我獨處嗎？嘻嘻～ (靠近)", "別這樣看我啦！沒事就不要亂叫，我會心臟砰砰跳的…真是的！", "幹嘛啦？想說什麼又不敢說嗎？真是個膽小鬼～ (輕笑)", "嗯？只是 @ 我就滿足了嗎？還是…想玩欲擒故縱？我可不會上當喔！(挑眉)", "就、就只會這樣嗎？太無聊了吧！想跟我說話就要好好講喔，不然... (盯著你)"]
+
+        # --- 特別使用者處理 ---
+        # 呼叫 special_users_manager 中的處理函式
+        message_handled = await handle_special_user_message(
+            message, 
+            prompt_content, 
+            user_display_name, 
+            SPECIAL_USERS_DATA, 
+            query_gemini # 將 query_gemini 函式作為參數傳遞
+        )
+        if message_handled:
+            return # 如果特別使用者邏輯已經處理了訊息，則結束
+
+        # Default empty prompt responses (for general users and "普通" special users with empty prompt)
+        if not prompt_content:
+            await message.reply(random.choice(empty_prompt_responses), mention_author=False); return
+
+        async with message.channel.typing():
+            answer = await asyncio.to_thread(query_gemini, prompt_content, user_display_name)
+        await message.reply(answer, mention_author=False)
+
+    await bot.process_commands(message)
+
+@bot.command()
+async def hi(ctx: commands.Context):
+    await ctx.reply("嗨～我是你的小助手♡ 才不想理你呢...除非你說我可愛！", mention_author=False)
+
+if __name__ == "__main__":
+    bot.run(DISCORD_TOKEN)

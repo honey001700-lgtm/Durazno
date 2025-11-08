@@ -1,0 +1,36 @@
+{
+  "embeds": [
+    {
+      "title": "公會公告的模板",
+      "description": "- 點公會公告會進入[這個網站](https://discohook.app/)用來設計你的內容樣子。\n   - 設計出的東西是用名叫.json程式語言所組成的。\n   - 基本上能調的很多你看的到的都能調整，添加，複製，反正想怎樣就怎樣。",
+      "color": 15844367,
+      "image": {
+        "url": "https://cdn.discordapp.com/attachments/1433905968068165734/1433927734249132204/6de2ba4a9eff6a23.png?ex=690c6784&is=690b1604&hm=51b1a90cb8b9dc4d0c345a70127ad7ef116ec384eae0922dc07612962a9c8b14&"
+      },
+      "thumbnail": {
+        "url": "https://cdn.discordapp.com/emojis/1429784488233140337.webp?size=96"
+      },
+      "author": {
+        "name": "公會公告",
+        "url": "https://discohook.app/",
+        "icon_url": "https://cdn.discordapp.com/emojis/1429782391416815616.webp?size=96"
+      },
+      "fields": [
+        {
+          "name": "關於排版",
+          "value": "就和Discord一樣只是這個會正式且方便許多。"
+        },
+        {
+          "name": "關於上傳方式",
+          "value": "1. 下載機器人嵌入式部分的壓縮檔\n2. 然後複製你要傳送的.json檔案\n3. 接著執行python \"C:\\Users\\User\\Desktop\\機器人\\Embed\\Embed.py\"就可以運作了\n4. 他會要求你輸入要傳送的 JSON 檔案路徑(相對)和輸入目標頻道 的ID。\n5. 沒意外就會傳送啦～\n\n **如果要更新資訊的話**\n1. 再到這邊設計完成後，複製.json檔案，取代你之前的.json檔案。\n2. 然後一樣執行python \"C:\\Users\\User\\Desktop\\機器人\\Embed\\Embed.py\"\n3. 他一樣會要求你輸入要傳送的 JSON 檔案路徑(相對)和輸入目標頻道 的ID，不用遲疑就照著做，和上次一模一樣，同個檔案同個頻道。\n4. 然後沒意外她就會更新。"
+        }
+      ],
+      "footer": {
+        "text": "阡燈夜雨",
+        "icon_url": "https://cdn.discordapp.com/attachments/1433905968068165734/1433928849569087709/2.png?ex=690c688e&is=690b170e&hm=f6c820eeb283b520cc500acbdcfda3322575f791859a2dcbbad6ec6c96569928&"
+      },
+      "timestamp": "2025-11-06T03:52:00.000Z"
+    }
+  ],
+  "components": []
+}
