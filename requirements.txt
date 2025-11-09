@@ -8,6 +8,7 @@ backcall==0.2.0
 beautifulsoup4==4.14.2
 bleach==6.3.0
 blinker==1.9.0
+browser-cookie3==0.20.1 # 更新為你實際安裝的版本
 certifi==2025.10.5
 charset-normalizer==3.4.4
 click==8.3.0
@@ -47,6 +48,7 @@ prompt_toolkit==3.0.52
 propcache==0.4.1
 pure_eval==0.2.3
 Pygments==2.19.2
+PyNaCl==1.5.0 # 保持不變
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.1
 pyzmq==27.1.0
