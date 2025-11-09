@@ -14,4 +14,6 @@ pip install -r requirements.txt
 
 Python: Select Interpreter
 
-pip freeze > requirements.txt
+pip freeze > requirements.txt   
+
+您需要將這段 JSON 數據，轉換成 Netscape 格式的文本文件，並命名為 cookies.txt，然後將其放在您的機器人程式碼能找到的位置。
