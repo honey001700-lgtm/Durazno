@@ -75,4 +75,4 @@ yarg==0.1.9
 yarl==1.22.0
 yt-dlp==2025.10.22
 PyNaCl
-+ pipreqs
+pipreqs
