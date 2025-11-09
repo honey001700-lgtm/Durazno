@@ -11,3 +11,11 @@ git commit -m "Your descriptive commit message"
 git push origin main
 何時使用：在本地提交更改後，使用git push從本地上傳這些新的提交主要的分支到起源遠端（您的 GitHub 倉庫）。
 它的功能：它會同步你的本地數據主要的分支主要的在 GitHub 上建立分支。
+
+git add .
+git commit -m "mc-4.3.1"
+git push origin main
+
+
+git commit -m "SSS 2.0"
+git commit -m "music 2.0"
