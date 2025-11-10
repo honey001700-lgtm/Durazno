@@ -1,0 +1,733 @@
+<!DOCTYPE: HTML>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>托蘭異世錄特性轉移成本計算器</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        @keyframes rgb-sharp-shift {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 100% 50%; }
+        }
+
+        :root {
+            --primary-color: #2c3e50;
+            --primary-hover-color: #34495e;
+            --secondary-color: #7f8c8d;
+            --success-color: #27ae60;
+            --warning-color: #e74c3c;
+            --background-light: #f4f6f9;
+            --card-background: #ffffff;
+            --text-color: #343a40;
+            --border-color: #dee2e6;
+            --shadow: 0 4px 12px rgba(0,0,0,0.08);
+            --border-radius: 8px;
+        }
+        #selectedTierCost { background: #ecf0f1; color: var(--primary-color); }
+        #totalCostDisplay { background: var(--primary-color); color: white; }
+        #savedCostDisplay { background: #e9f7ef; color: var(--success-color); border: 1px dashed var(--success-color); }
+        .cost-breakdown { background: #f8f8f8; }
+
+        body.dark-theme {
+            --primary-color: #3498db;
+            --primary-hover-color: #2980b9;
+            --secondary-color: #bdc3c7;
+            --success-color: #2ecc71;
+            --warning-color: #ff8a80;
+            --background-light: #0a0a0a;
+            --card-background: #111111;
+            --text-color: #ffffff;
+            --border-color: #222222;
+            --shadow: 0 4px 12px rgba(0,0,0,0.8);
+        }
+        body.dark-theme .action-btn.new-session { background: #9e1c1c; color: white; }
+        body.dark-theme .action-btn.new-session:hover { background: #7b1717; }
+        body.dark-theme #selectedTierCost { background: #222222; color: var(--primary-color); }
+        body.dark-theme #totalCostDisplay { background: var(--primary-color); color: #000000; }
+        body.dark-theme #savedCostDisplay { background: #2ecc7133; color: var(--success-color); border: 1px dashed var(--success-color); }
+        body.dark-theme .cost-breakdown { background: #222222; }
+        body.dark-theme .cost-item { border-bottom: 1px solid #333333; }
+        body.dark-theme .header h1,
+        body.dark-theme label,
+        body.dark-theme .cost-value { color: var(--primary-color); }
+        body.dark-theme select, body.dark-theme input { border: 1px solid var(--border-color); }
+        body.dark-theme .history-header { background: #222222; }
+
+        /* Modified Reading Theme for White + Light Beige + Orange */
+        body.reading-theme {
+            --primary-color: #FF8C00; /* Dark Orange */
+            --primary-hover-color: #FFA500; /* Lighter Orange on hover */
+            --secondary-color: #8D6246; /* Soft Brown for secondary elements */
+            --success-color: #4CAF50; /* Green for success, slightly muted */
+            --warning-color: #F44336; /* Red for warning, slightly muted */
+            --background-light: #FDF5E6; /* Light Beige / Old Lace */
+            --card-background: #FFFFFF; /* Pure White for cards */
+            --text-color: #333333; /* Dark Grey for general text */
+            --border-color: #E0E0E0; /* Light Grey for borders */
+            --shadow: 0 4px 12px rgba(255, 140, 0, 0.15); /* Orange tinted shadow */
+        }
+        body.reading-theme .header h1,
+        body.reading-theme label,
+        body.reading-theme .cost-value { color: var(--primary-color); }
+        body.reading-theme #selectedTierCost { background: #FFF3E0; color: var(--primary-color); border: 1px solid var(--primary-color); } /* Very light orange background for selected tier cost */
+        body.reading-theme #totalCostDisplay { background: var(--primary-color); color: var(--card-background); }
+        body.reading-theme #savedCostDisplay { background: #FFFDE7; color: var(--success-color); border: 1px dashed var(--success-color); } /* Light yellow-white for saved cost */
+        body.reading-theme .cost-breakdown { background: #F8F8F8; } /* Off-white for breakdown */
+        body.reading-theme select, body.reading-theme input { border: 1px solid var(--border-color); color: var(--text-color); background-color: var(--card-background); }
+        body.reading-theme .notice { color: var(--secondary-color); }
+        body.reading-theme .action-btn.new-session { background: var(--warning-color); color: white; }
+        body.reading-theme .action-btn.save-session { background: #1abc9c; color: white; } /* Keeping save as teal for contrast */
+        body.reading-theme .action-btn.load-session { background: var(--primary-color); color: white; }
+        body.reading-theme .action-btn:hover { opacity: 0.9; }
+        body.reading-theme .history-header { background: #FFF8E1; } /* Light cream for history header */
+
+
+        body.rgb-theme {
+            --secondary-color: #bdc3c7;
+            --success-color: #2ecc71;
+            --warning-color: #ff8a80;
+            --background-light: #000000;
+            --card-background: #111111;
+            --text-color: #ffffff;
+            --border-color: #222222;
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.5); 
+        }
+
+        body.rgb-theme .action-btn.overwrite,
+        body.rgb-theme .action-btn.accumulate,
+        body.rgb-theme .action-btn.load-session,
+        body.rgb-theme #totalCostDisplay,
+        body.rgb-theme #selectedTierCost,
+        body.rgb-theme #savedCostDisplay {
+            background: linear-gradient(90deg, #ff0000, #ff8000, #ffff00, #00ff00, #0000ff, #8a2be2, #ff0000);
+            background-size: 300% 100%;
+            animation: rgb-sharp-shift 10s linear infinite;
+            color: black;
+        }
+
+        body.rgb-theme .action-btn.new-session,
+        body.rgb-theme .action-btn.reset-mem,
+        body.rgb-theme .action-btn.delete-session {
+            background: #9e1c1c; 
+            animation: none;
+            color: white;
+        }
+        body.rgb-theme .action-btn.new-session:hover,
+        body.rgb-theme .action-btn.reset-mem:hover,
+        body.rgb-theme .action-btn.delete-session:hover {
+            background: #7b1717;
+        }
+
+        body.rgb-theme .header h1,
+        body.rgb-theme footer div {
+            background: linear-gradient(90deg, #ff0000, #ff8000, #ffff00, #00ff00, #0000ff, #8a2be2, #ff0000);
+            background-size: 300% 100%;
+            animation: rgb-sharp-shift 10s linear infinite;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent; 
+        }
+        
+        body.rgb-theme .container {
+            background: var(--card-background);
+        }
+        body.rgb-theme .cost-breakdown { 
+            background: #222222; 
+        }
+        body.rgb-theme .cost-item { 
+            border-bottom: 1px solid #333333; 
+        }
+        body.rgb-theme select, 
+        body.rgb-theme input { 
+            border: 1px solid var(--border-color);
+            background-color: #222222;
+            color: var(--text-color);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: var(--background-light);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            transition: background 0.3s;
+        }
+
+        .container {
+            max-width: 650px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 30px;
+            background: var(--card-background);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            flex-grow: 1;
+            transition: background 0.3s, box-shadow 0.3s;
+        }
+
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { font-size: 1.8em; font-weight: 700; margin-bottom: 5px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: 500; font-size: 0.9em; }
+
+        select, input[type="number"], input[type="text"] {
+            width: 100%; padding: 12px; border: 1px solid var(--border-color);
+            border-radius: var(--border-radius); font-size: 1em; color: var(--text-color);
+            background-color: var(--card-background); transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        select:focus, input:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+            outline: none;
+        }
+        .notice { font-size: 0.85em; margin-top: 5px; text-align: center; font-weight: 500; }
+        
+        .action-buttons { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); 
+            gap: 10px; 
+            margin: 15px 0; 
+        }
+        .session-management {
+            padding: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            margin-bottom: 25px;
+            background: rgba(127, 140, 141, 0.05);
+        }
+        .session-management .form-group { margin-bottom: 10px; }
+        .session-management .form-group:last-child { margin-top: 15px; }
+
+        .action-btn {
+            padding: 12px 15px; border: none; border-radius: var(--border-radius);
+            cursor: pointer; font-size: 0.95em; font-weight: 500; transition: all 0.2s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            color: white; 
+        }
+        .action-btn.overwrite { background: #34495e; }
+        .action-btn.accumulate { background: var(--success-color); }
+        .action-btn.reset-mem { background: var(--warning-color); }
+        .action-btn.new-session { background: #c0392b; }
+        .action-btn.save-session { background: #1abc9c; }
+        .action-btn.load-session { background: var(--primary-color); }
+        .action-btn.delete-session { background: #9e1c1c; }
+        
+        .action-btn:hover { opacity: 0.9; transform: translateY(-2px); }
+        .results-grid { display: grid; grid-template-columns: 1fr; gap: 15px; margin-top: 30px; }
+        .result-box { padding: 15px; border-radius: var(--border-radius); text-align: center; font-weight: 500; box-shadow: inset 0 1px 3px rgba(0,0,0,0.05); }
+        .result-box span.label { display: block; font-size: 0.8em; color: var(--secondary-color); margin-bottom: 5px; }
+        .cost-value-large { font-size: 1.5em; font-weight: 700; display: block; }
+        .cost-breakdown { padding: 10px 15px; border-radius: var(--border-radius); margin-top: 20px; }
+        .cost-item { display: flex; justify-content: space-between; padding: 15px 0; border-bottom: 1px solid var(--border-color); }
+        .cost-item:last-child { border-bottom: none; }
+        .theme-switcher { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 15px; }
+        .theme-switcher label { 
+            margin-right: 8px; 
+            margin-bottom: 0; 
+            font-size: 0.8em; 
+            color: var(--text-color); 
+        }
+        #themeSelector { 
+            width: auto; 
+            padding: 4px 8px; 
+            font-size: 0.8em; 
+            box-shadow: none; 
+            cursor: pointer; 
+        }
+
+        .session-history { 
+            margin-top: 25px; 
+            border-top: 1px solid var(--border-color); 
+            padding-top: 15px; 
+        }
+        .history-log {
+            max-height: 250px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            margin-top: 10px;
+        }
+        .history-item {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr 1fr 1.2fr;
+            gap: 5px;
+            padding: 10px 15px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.8em;
+            align-items: center;
+        }
+        .history-item:nth-child(even) { background: rgba(0,0,0,0.02); }
+        body.dark-theme .history-item:nth-child(even) { background: rgba(255,255,255,0.05); }
+        body.reading-theme .history-item:nth-child(even) { background: rgba(255, 165, 0, 0.05); } /* Light orange tint for history items */
+        
+        .history-item:last-child { border-bottom: none; }
+        .history-label { font-weight: 500; color: var(--secondary-color); font-size: 0.9em; }
+        .history-value { font-weight: 400; }
+        .history-header { 
+            font-weight: 700; 
+            background: var(--background-light); 
+            padding: 10px 15px; 
+            border-bottom: 2px solid var(--primary-color); 
+            position: sticky; 
+            top: 0;
+            z-index: 10;
+        }
+
+        footer {
+            max-width: 650px; width: 100%; margin: 30px auto 0; padding: 15px 0;
+            border-top: 1px solid var(--border-color); display: flex;
+            justify-content: space-between; font-size: 0.8em; color: var(--secondary-color);
+        }
+        footer div { text-align: center; flex: 1; }
+
+        @media (min-width: 600px) { .results-grid { grid-template-columns: 1fr 1fr 1fr; } }
+        @media (max-width: 600px) { footer { flex-direction: column; gap: 5px; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="theme-switcher">
+            <label for="themeSelector">顏色主題:</label>
+            <select id="themeSelector" onchange="switchTheme()">
+                <option value="light">淺色模式</option>
+                <option value="dark">深色模式 (高對比)</option>
+                <option value="reading" selected>閱讀模式 (白色+淡米黃+橘色)</option>
+                <option value="rgb">RGB 模式 (動畫)</option>
+            </select>
+        </div>
+        <div class="header">
+            <h1>托蘭異世錄特性轉移成本計算器</h1>
+        </div>
+
+        <div class="calculator">
+            <div class="session-management">
+                <h3>專案管理 (已儲存的專案)</h3>
+                
+                <div class="form-group">
+                    <label for="sessionName">目前專案名稱</label>
+                    <input type="text" id="sessionName" value="目前專案" placeholder="輸入專案名稱" oninput="currentSession.name = this.value">
+                </div>
+
+                <div class="action-buttons">
+                    <button class="action-btn new-session" onclick="startNewSession()">開始新專案</button>
+                    <button class="action-btn save-session" onclick="saveCurrentSession()">儲存目前專案</button>
+                </div>
+
+                <div class="form-group">
+                    <label for="sessionSelector">載入先前專案</label>
+                    <select id="sessionSelector">
+                        <option value="">-- 無已儲存專案 --</option>
+                    </select>
+                </div>
+
+                <div class="action-buttons" style="margin-top: 0; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+                    <button class="action-btn load-session" onclick="loadSelectedSession()">載入選定專案</button>
+                    <button class="action-btn delete-session" onclick="deleteSelectedSession()">刪除選定專案</button>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="weaponType">武器類型</label>
+                <select id="weaponType" onchange="calculateCost()">
+                    <option value="10000">單手劍</option>
+                    <option value="6670">雙手劍</option>
+                    <option value="16670">弓</option>
+                    <option value="12500" selected>弩</option>
+                    <option value="10000">杖</option>
+                    <option value="20000">魔導具</option>
+                    <option value="14290">拳套</option>
+                    <option value="6250">旋風槍</option>
+                    <option value="25000">拔刀劍</option>
+                    <option value="18500">身體裝備</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="sourceAtk">來源 ATK</label>
+                <input type="number" id="sourceAtk" value="0" min="0" max="2000" oninput="calculateCost()">
+            </div>
+
+            <div class="form-group">
+                <label for="targetAtk">目標 ATK</label>
+                <input type="number" id="targetAtk" value="0" min="0" max="2000" oninput="calculateCost()">
+            </div>
+
+            <div class="form-group">
+                <label for="tier">物品階級</label>
+                <select id="tier" onchange="calculateCost()">
+                    <option value="1">階級 1</option>
+                    <option value="2">階級 2</option>
+                    <option value="3">階級 3</option>
+                    <option value="4" selected>階級 4</option>
+                    <option value="5">階級 5</option>
+                </select>
+            </div>
+
+            <div class="action-buttons">
+                <button class="action-btn overwrite" onclick="storeCurrentAsPrevious()">儲存目前為上次總計 (覆蓋)</button>
+                <button class="action-btn reset-mem" onclick="resetPreviousTotal()">重置上次總計</button>
+                <button class="action-btn accumulate" onclick="addCurrentToPrevious()">將目前成本累加至上次總計</button>
+            </div>
+
+            <div class="results-grid">
+                <div class="result-box" id="selectedTierCost">
+                    <span class="label">轉移成本 (1 次嘗試)</span>
+                    <span class="cost-value-large">0</span>
+                </div>
+                
+                <div class="result-box" id="savedCostDisplay" style="display: none;">
+                    <span class="label">上次成本總計</span>
+                    <span class="cost-value-large" id="savedCostValue">0</span>
+                </div>
+
+                <div class="result-box" id="totalCostDisplay" style="display: none;">
+                    <span class="label">累計成本</span>
+                    <span class="cost-value-large" id="totalCostValue">0</span>
+                </div>
+            </div>
+
+            <div class="cost-breakdown">
+                <div class="cost-item">
+                    <span class="cost-label">ATK 成本係數</span>
+                    <span class="cost-value" id="atkCostFactor">0</span>
+                </div>
+                <div class="cost-item">
+                    <span class="cost-label">階級倍率</span>
+                    <span class="cost-value" id="tierMultiplier">1.00x</span>
+                </div>
+            </div>
+            
+            <div class="session-history">
+                <h4><span id="historyTitle">專案歷史 (0 筆交易)</span></h4>
+                <div id="historyLog" class="history-log">
+                    <div style="padding: 10px; text-align: center; color: var(--secondary-color);">此專案沒有任何交易紀錄。</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer>
+        <div>公式提供: Halo</div>
+        <div>工具開發: Clair de Lune ＆ Carino🧡鴻末末</div>
+    </footer>
+
+    <script>
+        let currentCost = 0;
+        let currentSession = {
+            name: '目前專案',
+            cost: 0, 
+            history: [] 
+        };
+        const SESSION_STORAGE_KEY = 'toramAbilityCostSessions';
+        const DEFAULT_SESSION_NAME = '目前專案';
+
+        function formatNumber(num) {
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+
+        function resetCurrentInputs() {
+            calculateCost();
+        }
+        
+        function updateHistoryDisplay(history) {
+             const logElement = document.getElementById('historyLog');
+            const titleElement = document.getElementById('historyTitle');
+            logElement.innerHTML = '';
+            
+            titleElement.textContent = `專案歷史 (${history.length} 筆交易)`;
+
+            if (history.length === 0) {
+                logElement.innerHTML = '<div style="padding: 10px; text-align: center; color: var(--secondary-color);">此專案沒有任何交易紀錄。</div>';
+                return;
+            }
+            
+            const headerHtml = `
+                <div class="history-item history-header">
+                    <span class="history-label">動作</span>
+                    <span class="history-label">增加成本</span>
+                    <span class="history-label">上次總計</span>
+                    <span class="history-label">新總計</span>
+                </div>`;
+            logElement.innerHTML += headerHtml;
+
+            history.forEach(item => {
+                const itemHtml = `
+                    <div class="history-item" title="時間: ${item.timestamp}">
+                        <span class="history-value" style="font-weight: 500;">${item.type}</span>
+                        <span class="history-value" style="color: var(--success-color);">${formatNumber(item.added)}</span>
+                        <span class="history-value">${formatNumber(item.prev)}</span>
+                        <span class="history-value" style="font-weight: 700; color: var(--primary-color);">${formatNumber(item.total)}</span>
+                    </div>
+                `;
+                logElement.innerHTML += itemHtml;
+            });
+            
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        function updateDisplay() {
+            const totalCost = currentSession.cost + currentCost;
+
+            document.querySelector('#selectedTierCost .cost-value-large').textContent = formatNumber(currentCost);
+            document.getElementById('savedCostValue').textContent = formatNumber(currentSession.cost);
+            document.querySelector('#totalCostDisplay .cost-value-large').textContent = formatNumber(totalCost);
+            
+            const isSessionActive = currentSession.cost > 0 || currentCost > 0;
+            document.getElementById('totalCostDisplay').style.display = isSessionActive ? 'block' : 'none';
+            document.getElementById('savedCostDisplay').style.display = currentSession.cost > 0 ? 'block' : 'none';
+            
+            document.getElementById('sessionName').value = currentSession.name;
+            
+            updateHistoryDisplay(currentSession.history); 
+        }
+
+        function calculateCost() {
+            const targetAtk = parseInt(document.getElementById('targetAtk').value) || 0; 
+            const sourceAtk = parseInt(document.getElementById('sourceAtk').value) || 0; 
+            const weaponType = parseInt(document.getElementById('weaponType').value); 
+            const tier = parseInt(document.getElementById('tier').value); 
+
+            const targetWeaponAtk = Math.trunc(targetAtk * weaponType / 10000);
+            const sourceWeaponAtk = Math.trunc(sourceAtk * weaponType / 10000);
+            
+            const difference = targetWeaponAtk - sourceWeaponAtk;
+            
+            const diffFactor = Math.max(0, difference); 
+
+            const squaredAndDivided = Math.trunc(diffFactor * diffFactor / 100);
+
+            const atkCostFactor = squaredAndDivided + 100;
+
+            const tierMultiplier = (tier * (25 * tier - 25) + 100);
+
+            currentCost = Math.trunc(atkCostFactor * tierMultiplier);
+
+            document.getElementById('atkCostFactor').textContent = atkCostFactor;
+            document.getElementById('tierMultiplier').textContent = (tierMultiplier / 100).toFixed(2) + 'x'; 
+            
+            updateDisplay();
+        }
+
+        function recordTransaction(type, addedCost, previousCost) {
+            if (addedCost === 0 && type !== 'Overwrite') return; 
+
+            const newTotal = type === 'Overwrite' ? addedCost : previousCost + addedCost;
+            
+            const transaction = {
+                type: type,
+                added: addedCost,
+                prev: previousCost,
+                total: newTotal,
+                timestamp: new Date().toLocaleTimeString('zh-TW', { hour12: true, hour: '2-digit', minute: '2-digit' })
+            };
+            
+            currentSession.history.push(transaction);
+        }
+
+        function storeCurrentAsPrevious() {
+            const previousCost = currentSession.cost;
+            currentSession.cost = currentCost;
+            recordTransaction('覆蓋', currentCost, previousCost);
+            saveCurrentSessionState();
+            calculateCost();
+        }
+
+        function addCurrentToPrevious() {
+            if (currentCost === 0) {
+                 alert('轉移成本為 0。無可累加。');
+                 return;
+            }
+            const previousCost = currentSession.cost;
+            currentSession.cost += currentCost;
+            recordTransaction('累加', currentCost, previousCost);
+            saveCurrentSessionState();
+            calculateCost();
+        }
+
+        function resetPreviousTotal() {
+            if (!confirm('您確定要重置上次總計並清除目前的專案歷史紀錄嗎？')) {
+                return;
+            }
+            currentSession.cost = 0; 
+            currentSession.history = []; 
+            saveCurrentSessionState();
+            calculateCost();
+        }
+        
+        function getSessions() {
+            const sessions = localStorage.getItem(SESSION_STORAGE_KEY);
+            return sessions ? JSON.parse(sessions) : {};
+        }
+        
+        function saveCurrentSessionState() {
+            if (currentSession.name !== DEFAULT_SESSION_NAME && currentSession.name.trim() !== '') {
+                let sessions = getSessions();
+                sessions[currentSession.name] = JSON.parse(JSON.stringify(currentSession)); 
+                saveSessions(sessions);
+                populateSessionSelector(sessions);
+            }
+        }
+
+        function saveSessions(sessions) {
+            localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessions));
+        }
+
+        function populateSessionSelector(sessions) {
+            const selector = document.getElementById('sessionSelector');
+            selector.innerHTML = '<option value="">-- 無已儲存專案 --</option>';
+            
+            const sessionNames = Object.keys(sessions).sort();
+            sessionNames.forEach(name => {
+                const sessionData = sessions[name];
+                const cost = sessionData.cost || 0;
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = `${name} (${formatNumber(cost)})`;
+                selector.appendChild(option);
+            });
+            selector.value = currentSession.name;
+        }
+        
+        function loadSessionsOnStartup() {
+            const sessions = getSessions();
+            populateSessionSelector(sessions);
+        }
+
+        function startNewSession() {
+            if (!confirm('您確定要開始一個新專案嗎？這將重置目前的上次總計並清除歷史紀錄。')) {
+                return;
+            }
+            currentSession = {
+                name: DEFAULT_SESSION_NAME,
+                cost: 0,
+                history: []
+            };
+            calculateCost(); 
+            alert('已開始新專案。上次總計和歷史紀錄已重置。');
+        }
+
+        function saveCurrentSession() {
+            const sessionName = document.getElementById('sessionName').value.trim();
+            if (!sessionName) {
+                alert('請在儲存前輸入您的專案名稱。');
+                return;
+            }
+            
+            if (currentSession.cost === 0 && currentCost === 0) {
+                 alert('無法儲存總成本為 0 的專案。');
+                 return;
+            }
+
+            if (currentCost > 0) {
+                const previousCost = currentSession.cost;
+                currentSession.cost += currentCost;
+                recordTransaction('儲存/累加', currentCost, previousCost);
+            }
+            
+            currentSession.name = sessionName;
+            
+            let sessions = getSessions();
+            const finalSessionState = JSON.parse(JSON.stringify(currentSession));
+            sessions[sessionName] = finalSessionState; 
+            saveSessions(sessions);
+            populateSessionSelector(sessions);
+            
+            calculateCost(); 
+
+            alert(`專案 "${sessionName}" 已成功儲存，累計成本為 ${formatNumber(currentSession.cost)}。`);
+        }
+
+        function loadSelectedSession() {
+            const selector = document.getElementById('sessionSelector');
+            const selectedName = selector.value;
+            
+            if (!selectedName) {
+                alert('請選擇一個已儲存的專案來載入。');
+                return;
+            }
+
+            const sessions = getSessions();
+            const sessionToLoad = sessions[selectedName];
+
+            if (sessionToLoad) {
+                currentSession = sessionToLoad;
+                currentSession.name = selectedName;
+                
+                calculateCost(); 
+                alert(`專案 "${selectedName}" 已載入。上次總計為 ${formatNumber(currentSession.cost)}。`);
+            } else {
+                alert(`錯誤：找不到專案 "${selectedName}"。`);
+            }
+        }
+        
+        function deleteSelectedSession() {
+            const selector = document.getElementById('sessionSelector');
+            const selectedName = selector.value;
+            
+            if (!selectedName) {
+                alert('請選擇一個已儲存的專案來刪除。');
+                return;
+            }
+            
+            if (!confirm(`您確定要永久刪除專案："${selectedName}" 嗎？此操作無法撤銷。`)) {
+                return;
+            }
+
+            let sessions = getSessions();
+            delete sessions[selectedName];
+            saveSessions(sessions);
+            
+            if (currentSession.name === selectedName) {
+                 currentSession = {
+                    name: DEFAULT_SESSION_NAME,
+                    cost: 0,
+                    history: []
+                };
+            }
+            
+            populateSessionSelector(getSessions());
+            calculateCost();
+            alert(`專案 "${selectedName}" 已被刪除。`);
+        }
+
+        function switchTheme() {
+            const selectedTheme = document.getElementById('themeSelector').value;
+            const body = document.body;
+            
+            body.className = ''; 
+            if (selectedTheme === 'dark') {
+                body.classList.add('dark-theme');
+            } else if (selectedTheme === 'reading') {
+                body.classList.add('reading-theme');
+            } else if (selectedTheme === 'rgb') {
+                body.classList.add('rgb-theme');
+            }
+            localStorage.setItem('theme', selectedTheme);
+        }
+
+        function loadTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'reading'; /* Changed default to reading */
+            const selector = document.getElementById('themeSelector');
+            
+            selector.value = savedTheme;
+            switchTheme(); 
+        }
+
+        document.getElementById('weaponType').addEventListener('change', calculateCost);
+        document.getElementById('sourceAtk').addEventListener('input', calculateCost);
+        document.getElementById('targetAtk').addEventListener('input', calculateCost);
+        document.getElementById('tier').addEventListener('change', calculateCost);
+
+        window.onload = function() {
+            loadTheme();
+            loadSessionsOnStartup(); 
+            calculateCost();
+        };
+    </script>
+</body>
+</html>

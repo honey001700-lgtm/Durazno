@@ -10,12 +10,26 @@ import os
 
 import discord
 from discord.abc import Messageable
-# 引入 pytubefix
-from pytubefix import YouTube, Playlist
-from pytubefix.streams import Stream
+import yt_dlp
 
 
-# YTDL_OPTIONS, FFMPEG_BEFORE_OPTS, FFMPEG_OPTS, ytdl, stream_ytdl 不再需要
+YTDL_OPTIONS = {
+    "format": "bestaudio/best",
+    "noplaylist": False,
+    "quiet": True,
+    "default_search": "auto",
+    "extract_flat": "in_playlist",
+    "source_address": "0.0.0.0",
+    #"cookiesfrombrowser": "chrome", 
+    "cookies": "cookies.txt",  
+}
+
+FFMPEG_BEFORE_OPTS = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+FFMPEG_OPTS = "-vn"
+
+ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
+stream_ytdl = yt_dlp.YoutubeDL({**YTDL_OPTIONS, "extract_flat": False})
+
 
 def coerce_duration(value: Any) -> Optional[int]:
     if value is None:
@@ -43,8 +57,6 @@ class Track:
     uploader: Optional[str]
     source: str
     requester_id: int
-    # 新增一個欄位來儲存 pytubefix 的 YouTube 物件，方便之後獲取串流
-    yt_object: Optional[YouTube] = None 
 
     def clone(self) -> "Track":
         return Track(
@@ -56,7 +68,6 @@ class Track:
             uploader=self.uploader,
             source=self.source,
             requester_id=self.requester_id,
-            yt_object=self.yt_object # 也複製 yt_object
         )
 
     def create_audio(self, *, volume: float = 0.6) -> discord.PCMVolumeTransformer:
@@ -64,83 +75,78 @@ class Track:
             raise RuntimeError("這首歌的串流網址還沒準備好喔...是不是想偷偷走掉...？")
         audio = discord.FFmpegPCMAudio(
             self.stream_url,
-            before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5", # FFMPEG_BEFORE_OPTS
-            options="-vn", # FFMPEG_OPTS
+            before_options=FFMPEG_BEFORE_OPTS,
+            options=FFMPEG_OPTS,
         )
         return discord.PCMVolumeTransformer(audio, volume)
 
 
 async def fetch_tracks(query: str, requester_id: int) -> List[Track]:
     loop = asyncio.get_event_loop()
-    tracks: List[Track] = []
 
-    def _extract_pytubefix() -> List[Track]:
-        try:
-            # 嘗試判斷是否為播放列表
-            if "playlist?list=" in query:
-                pl = Playlist(query)
-                for video_url in pl.video_urls:
-                    try:
-                        yt = YouTube(video_url)
-                        # 強制獲取資訊，避免只有佔位符
-                        yt.check_availability() 
-                        track = Track(
-                            title=yt.title or "未知歌曲...你是不是藏起來了...？",
-                            webpage_url=yt.watch_url,
-                            stream_url=None, # 初始時為 None，之後再解析
-                            duration=yt.length,
-                            thumbnail=yt.thumbnail_url,
-                            uploader=yt.author,
-                            source="YouTube",
-                            requester_id=requester_id,
-                            yt_object=yt
-                        )
-                        tracks.append(track)
-                    except Exception as e:
-                        print(f"無法載入播放列表中的影片 {video_url}: {e}")
-            else:
-                yt = YouTube(query)
-                # 強制獲取資訊，避免只有佔位符
-                yt.check_availability() 
-                track = Track(
-                    title=yt.title or "未知歌曲...你是不是藏起來了...？",
-                    webpage_url=yt.watch_url,
-                    stream_url=None, # 初始時為 None，之後再解析
-                    duration=yt.length,
-                    thumbnail=yt.thumbnail_url,
-                    uploader=yt.author,
-                    source="YouTube",
+    def _extract() -> List[Track]:
+        data = ytdl.extract_info(query, download=False)
+        entries = data.get("entries") if isinstance(data, dict) and data.get("entries") else [data]
+        tracks: List[Track] = []
+        for entry in entries:
+            if entry is None:
+                continue
+            raw_url = entry.get("url")
+            webpage_url = entry.get("webpage_url") or entry.get("original_url")
+            if not webpage_url:
+                if raw_url and raw_url.startswith("http"):
+                    webpage_url = raw_url
+                elif entry.get("extractor_key") == "Youtube" and raw_url:
+                    webpage_url = f"https://www.youtube.com/watch?v={raw_url}"
+                else:
+                    webpage_url = raw_url or query
+            stream_url = None
+            if raw_url and raw_url.startswith("http") and entry.get("_type") != "url":
+                stream_url = raw_url
+            title = entry.get("title") or "未知歌曲...你是不是藏起來了...？"
+            duration = coerce_duration(entry.get("duration"))
+            thumbnail = entry.get("thumbnail")
+            uploader = entry.get("uploader")
+            extractor = entry.get("extractor_key") or "未知來源"
+            tracks.append(
+                Track(
+                    title=title,
+                    webpage_url=webpage_url,
+                    stream_url=stream_url,
+                    duration=duration,
+                    thumbnail=thumbnail,
+                    uploader=uploader,
+                    source=extractor,
                     requester_id=requester_id,
-                    yt_object=yt
                 )
-                tracks.append(track)
-        except Exception as e:
-            print(f"PyTubeFix 提取資訊時出錯: {e}")
+            )
         return tracks
 
-    return await loop.run_in_executor(None, _extract_pytubefix)
+    return await loop.run_in_executor(None, _extract)
 
 
 async def resolve_stream_url(track: Track) -> Optional[str]:
-    if not track.yt_object:
-        return None
-
     loop = asyncio.get_running_loop()
 
-    def _get_stream_url() -> Optional[str]:
-        try:
-            # 選擇最佳音頻流
-            # `pytubefix` 的 `get_audio_only()` 通常會返回最佳的音頻流
-            # 或者使用 `filter(only_audio=True).order_by('abr').desc().first()`
-            audio_stream: Optional[Stream] = track.yt_object.streams.filter(only_audio=True).order_by('abr').desc().first()
-            if audio_stream:
-                return audio_stream.url
-        except Exception as e:
-            print(f"獲取串流 URL 時出錯: {e}")
-        return None
+    def _extract() -> Optional[str]:
+        data = stream_ytdl.extract_info(track.webpage_url, download=False)
+        if isinstance(data, dict) and data.get("entries"):
+            first = data["entries"][0]
+        else:
+            first = data
+        if not isinstance(first, dict):
+            return None
+        url = first.get("url")
+        if not url or not url.startswith("http"):
+            return None
+        # update cached metadata when available
+        track.duration = track.duration or coerce_duration(first.get("duration"))
+        track.thumbnail = track.thumbnail or first.get("thumbnail")
+        track.uploader = track.uploader or first.get("uploader")
+        return url
 
     try:
-        return await loop.run_in_executor(None, _get_stream_url)
+        return await loop.run_in_executor(None, _extract)
     except Exception:
         return None
 

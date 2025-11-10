@@ -1,0 +1,17 @@
+{
+  "content": "以下是 Clair de Lune 和 Halo 提供的特性轉移費用模擬器工具（以防上面的公式過於複雜）。",
+  "embeds": [
+    {
+      "title": "如何使用特性",
+      "description": "- 當您裝備附有特性的武器或盔甲時，即可享受特性效果（不適用於副手武器）。\n- 有些特性具有常駐效果，會持續發動；而有些特性則需要滿足特定條件才能發動效果。\n- 具有「發動率」的特性需要您多次滿足特定條件才能享受特性效果。發動率 X% = 每次滿足特定條件時產生 X% 的機率。當能量達到 100% 時，特性即啟動，然後重置為 0%。\n- 以「MISS」作為啟動條件的特性需要真實的「MISS」，例如來自命中不足、爆擊、擦傷轉蛋失敗等（而非技能效果）。\n- 您可以疊加相同類型/階級特性的效果。",
+      "thumbnail": {
+        "url": "https://cdn.discordapp.com/attachments/979010719540457492/1436985124888514651/Picsart_25-11-09_14-38-47-366.png?ex=6912e9af&is=6911982f&hm=ab29694fc41ead36678765de0172465085c753fad915bf8f83e112c7b7ffa520&"
+      }
+    },
+    {
+      "title": "提示",
+      "url": "https://tw.toram.jp/information/detail/?information_id=10434",
+      "description": "- 您可以從 [設定] → [自動丟棄] 更改具有特性物品的自動丟棄設定。\n- 當您選擇武器/身體防具類別時，可以在委託板上應用特性篩選器。\n- 有關特性列表（包括數值縮放詳情），請查看此頻道 https://discord.com/channels/1417830709791559763/1437512129203671070！\n- 此外，這裡還有 Phantom's Library 成員過去貢獻的 [Google 文件](https://docs.google.com/document/d/1MiPIB1ACPeHIkamWU-_tYWnc5eyn3MF8-iFFTqYf4xM/edit?tab=t.0) 列表原型版本！"
+    }
+  ]
+}
