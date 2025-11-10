@@ -1,0 +1,19 @@
+{
+  "components": [],
+  "embeds": [
+    {
+      "thumbnail": {
+        "url": "https://cdn.discordapp.com/attachments/1310475215893037069/1420344705899696218/necro_8.png?ex=6911b396&is=69106216&hm=77197b194ddfd18306b316212af01f9eb2de54a461cb3fb420ced4eb0cd810e0&"
+      },
+      "title": "優質鏟具",
+      "description": "二階；[被動技能]僅限法杖\n\n被動效果：\n> 初始死靈疊加： 技能等級 + 總死靈法師技能點數/10\n> 墳墓人範圍： +0.6 * 技能等級 公尺"
+    },
+    {
+      "footer": {
+        "text": "伊藤鴻朱末｜💀死靈法師技能😈",
+        "icon_url": "https://cdn.discordapp.com/attachments/1310475215893037069/1420344705899696218/necro_8.png?ex=6911b396&is=69106216&hm=77197b194ddfd18306b316212af01f9eb2de54a461cb3fb420ced4eb0cd810e0&"
+      },
+      "description": "遊戲描述：首次展開技能「掘墓人」時, 額外獲得「死靈疊加」。即使稍微離開已展開的墓地, 「死靈疊加」也可以維持增加的狀態。"
+    }
+  ]
+}

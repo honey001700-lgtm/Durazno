@@ -1,0 +1,19 @@
+{
+  "components": [],
+  "embeds": [
+    {
+      "thumbnail": {
+        "url": "https://cdn.discordapp.com/attachments/1310475215893037069/1420344705899696218/necro_8.png?ex=6911b396&is=69106216&hm=77197b194ddfd18306b316212af01f9eb2de54a461cb3fb420ced4eb0cd810e0&"
+      },
+      "title": "收穫",
+      "description": "二階；[被動技能]僅限法杖\n\n技能效果：\n- 啟用時HP與MP恢復：\n> HP恢復： 角色最大 HP * 技能等級%\n> MP恢復： 10 * 技能等級\n- 如果尚未部署 3 隻骸骨戰士，則從你的左側召喚一隻骸骨戰士。\n- 召喚的骸骨戰士等級：等同於骸骨召喚技能等級。"
+    },
+    {
+      "footer": {
+        "text": "伊藤鴻朱末｜💀死靈法師技能😈",
+        "icon_url": "https://cdn.discordapp.com/attachments/1310475215893037069/1420344705899696218/necro_8.png?ex=6911b396&is=69106216&hm=77197b194ddfd18306b316212af01f9eb2de54a461cb3fb420ced4eb0cd810e0&"
+      },
+      "description": "遊戲描述：討伐怪物後立刻少量回復HP與MP。 (每秒僅會發動1次)。若已習得「骸骨召喚」,則回復時會召喚出骸骨戰士(數量不會超過上限)。"
+    }
+  ]
+}
