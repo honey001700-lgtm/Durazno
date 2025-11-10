@@ -6,15 +6,34 @@ from enum import Enum
 import random
 from typing import Any, List, Optional, Sequence
 import time
-import os
+import os 
 
 import discord
 from discord.abc import Messageable
+
+# --- START MODIFICATION: Replace yt_dlp with pytubefix ---
 from pytubefix import YouTube, Playlist
-from pytubefix.exceptions import VideoUnavailable, RegexMatchError
+from pytubefix.exceptions import VideoUnavailable, RegexMatchError, LiveStreamError, AgeRestrictedError
+# --- END MODIFICATION ---
+
+
+# YTDL_OPTIONS = { # No longer needed for pytubefix
+#     "format": "bestaudio/best",
+#     "noplaylist": False,
+#     "quiet": True,
+#     "default_search": "auto",
+#     "extract_flat": "in_playlist",
+#     "source_address": "0.0.0.0",
+#     #"cookiesfrombrowser": "chrome", 
+#     "cookies": "cookies.txt",  
+# }
 
 FFMPEG_BEFORE_OPTS = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 FFMPEG_OPTS = "-vn"
+
+# ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS) # No longer needed
+# stream_ytdl = yt_dlp.YoutubeDL({**YTDL_OPTIONS, "extract_flat": False}) # No longer needed
+
 
 def coerce_duration(value: Any) -> Optional[int]:
     if value is None:
@@ -40,7 +59,7 @@ class Track:
     duration: Optional[int]
     thumbnail: Optional[str]
     uploader: Optional[str]
-    source: str # 將不再是 extractor_key，而是 'YouTube'
+    source: str
     requester_id: int
 
     def clone(self) -> "Track":
@@ -71,21 +90,25 @@ async def fetch_tracks(query: str, requester_id: int) -> List[Track]:
     tracks: List[Track] = []
 
     def _extract() -> List[Track]:
-        # 檢查是否為播放列表
-        if "playlist?list=" in query:
+        # --- START MODIFICATION: pytubefix logic ---
+        # Try to identify if it's a playlist or a single video
+        
+        # Check for playlist first
+        if "playlist?list=" in query or "youtube.com/playlist" in query:
             try:
-                playlist = Playlist(query)
-                for video_url in playlist.video_urls:
+                pl = Playlist(query)
+                # pytubefix.Playlist directly gives video URLs
+                for video_url in pl.video_urls:
                     try:
                         yt = YouTube(video_url)
-                        # 選擇最佳音頻流
-                        audio_stream = yt.streams.filter(only_audio=True, file_extension='mp4').order_by('abr').desc().first()
+                        # We only need stream_url for audio, so we select the best audio-only stream
+                        audio_stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
                         if audio_stream:
                             tracks.append(
                                 Track(
                                     title=yt.title or "未知歌曲...你是不是藏起來了...？",
                                     webpage_url=yt.watch_url,
-                                    stream_url=audio_stream.url, # pytubefix 直接提供串流URL
+                                    stream_url=audio_stream.url, # pytubefix provides the direct stream URL
                                     duration=yt.length,
                                     thumbnail=yt.thumbnail_url,
                                     uploader=yt.author,
@@ -93,91 +116,93 @@ async def fetch_tracks(query: str, requester_id: int) -> List[Track]:
                                     requester_id=requester_id,
                                 )
                             )
-                    except (VideoUnavailable, RegexMatchError) as e:
-                        print(f"Skipping unavailable video in playlist: {video_url} - {e}")
+                        else:
+                            print(f"找不到 {yt.title} 的音訊串流。")
+                    except (VideoUnavailable, RegexMatchError, LiveStreamError, AgeRestrictedError) as e:
+                        print(f"跳過無法播放的播放列表影片 {video_url}: {e}")
                     except Exception as e:
-                        print(f"Error processing video in playlist: {video_url} - {e}")
+                        print(f"處理播放列表影片 {video_url} 時發生未知錯誤: {e}")
+
             except (VideoUnavailable, RegexMatchError) as e:
-                print(f"Playlist not found or unavailable: {query} - {e}")
+                print(f"無法載入播放列表 {query}: {e}")
             except Exception as e:
-                print(f"Error processing playlist: {query} - {e}")
-        else:
+                print(f"處理播放列表時發生未知錯誤 {query}: {e}")
+
+        # If it's not a playlist, or if playlist extraction failed, try as a single video
+        if not tracks: # If no tracks were found from playlist attempt
             try:
-                # 嘗試直接將查詢作為 YouTube 連結處理
                 yt = YouTube(query)
-            except RegexMatchError:
-                # 如果不是有效的 YouTube 連結，嘗試使用搜尋功能 (pytubefix 本身不提供搜尋功能)
-                # 這是一個限制，你可能需要自行實現搜尋邏輯，例如通過外部 API
-                # 為了簡化，這裡假設直接提供 URL 或嘗試解析為 URL
-                # 如果需要搜尋，這部分需要額外開發
-                # 由於 pytubefix 不像 yt-dlp 有內建的 'default_search', 我們需要更精確的 URL
-                print(f"Invalid YouTube URL format for query: {query}. Try to find it via search (not implemented yet).")
-                return [] # 或嘗試其他方式
+                # Resolve potential errors early
+                yt.check_availability() # This will raise exceptions for unavailable videos
 
-            except VideoUnavailable:
-                print(f"Video unavailable: {query}")
-                return []
-            except Exception as e:
-                print(f"Error initializing YouTube object with query {query}: {e}")
-                return []
-
-            # 選擇最佳音頻流
-            audio_stream = yt.streams.filter(only_audio=True, file_extension='mp4').order_by('abr').desc().first()
-
-            if audio_stream:
-                tracks.append(
-                    Track(
-                        title=yt.title or "未知歌曲...你是不是藏起來了...？",
-                        webpage_url=yt.watch_url,
-                        stream_url=audio_stream.url,
-                        duration=yt.length,
-                        thumbnail=yt.thumbnail_url,
-                        uploader=yt.author,
-                        source="YouTube",
-                        requester_id=requester_id,
+                audio_stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
+                if audio_stream:
+                    tracks.append(
+                        Track(
+                            title=yt.title or "未知歌曲...你是不是藏起來了...？",
+                            webpage_url=yt.watch_url,
+                            stream_url=audio_stream.url,
+                            duration=yt.length,
+                            thumbnail=yt.thumbnail_url,
+                            uploader=yt.author,
+                            source="YouTube",
+                            requester_id=requester_id,
+                        )
                     )
-                )
+                else:
+                    print(f"找不到 {yt.title} 的音訊串流。")
+            except (VideoUnavailable, RegexMatchError, LiveStreamError, AgeRestrictedError) as e:
+                print(f"無法載入單一影片 {query}: {e}")
+            except Exception as e:
+                print(f"處理單一影片時發生未知錯誤 {query}: {e}")
+
+        # If still no tracks, try a search (pytubefix doesn't have built-in search like yt-dlp)
+        # For simplicity, we are not implementing a full search here. 
+        # If the query is not a direct URL, pytubefix will likely fail.
+        # You would need to use a separate library for YouTube search, e.g., google-api-python-client.
+        # For now, we assume direct URLs or playlist URLs.
+        # --- END MODIFICATION ---
         return tracks
 
     return await loop.run_in_executor(None, _extract)
 
 
 async def resolve_stream_url(track: Track) -> Optional[str]:
-    # 使用 pytubefix 時，stream_url 在 fetch_tracks 階段就已經解析出來了，
-    # 所以這個函數可能變得多餘，或者只需要在 stream_url 為 None 時重新解析
-    # 但為了與原程式碼結構一致，我們可以這樣做，但它應該會直接返回現有的 stream_url
+    # --- START MODIFICATION: pytubefix logic ---
+    # With pytubefix, the stream_url is often resolved directly in fetch_tracks.
+    # This function is now mainly for "refreshing" a stream_url if it expires,
+    # or if it wasn't fully resolved initially (e.g., if the initial fetch
+    # only got metadata but not the direct stream URL for some reason).
     if track.stream_url:
-        return track.stream_url
+        return track.stream_url # Already resolved
 
     loop = asyncio.get_running_loop()
 
     def _extract_stream_url() -> Optional[str]:
         try:
             yt = YouTube(track.webpage_url)
-            # 選擇最佳音頻流
-            audio_stream = yt.streams.filter(only_audio=True, file_extension='mp4').order_by('abr').desc().first()
-
+            yt.check_availability() # Check if video is still available
+            audio_stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
             if audio_stream:
-                # 更新 Track 資訊 (雖然 fetch_tracks 已經做了)
+                # Update cached metadata if there were any gaps
                 track.duration = track.duration or yt.length
                 track.thumbnail = track.thumbnail or yt.thumbnail_url
                 track.uploader = track.uploader or yt.author
                 return audio_stream.url
-        except (VideoUnavailable, RegexMatchError) as e:
-            print(f"無法解析串流 URL for {track.webpage_url}: {e}")
+        except (VideoUnavailable, RegexMatchError, LiveStreamError, AgeRestrictedError) as e:
+            print(f"重新解析串流網址時發生錯誤 {track.webpage_url}: {e}")
             return None
         except Exception as e:
-            print(f"解析串流 URL 發生錯誤 for {track.webpage_url}: {e}")
+            print(f"重新解析串流網址時發生未知錯誤 {track.webpage_url}: {e}")
             return None
         return None
 
-    return await loop.run_in_executor(None, _extract_stream_url)
+    try:
+        return await loop.run_in_executor(None, _extract_stream_url)
+    except Exception:
+        return None
+    # --- END MODIFICATION ---
 
-
-# MusicPlayer 類別保持不變，因為 Track 物件的結構沒有改變
-# PlayerControls 類別保持不變
-
-# ... (MusicPlayer 和 PlayerControls 類別的程式碼保持不變) ...
 
 class PlayerControls(discord.ui.View):
     def __init__(self, player: "MusicPlayer") -> None:
@@ -197,7 +222,7 @@ class PlayerControls(discord.ui.View):
                 ephemeral=True,
             )
             return False
-
+        
         self.player.reset_inactivity_timer()
         return True
 
@@ -273,7 +298,7 @@ class MusicPlayer:
     def _start_inactivity_timer(self) -> None:
         if self._inactivity_timer:
             self._inactivity_timer.cancel()
-
+        
         self._inactivity_timer = self.bot.loop.create_task(self._inactivity_check())
 
     def reset_inactivity_timer(self) -> None:
@@ -282,8 +307,8 @@ class MusicPlayer:
     async def _inactivity_check(self) -> None:
         try:
             while True:
-                await asyncio.sleep(30)
-
+                await asyncio.sleep(30) 
+                
                 if not self.voice or not self.voice.is_connected():
                     break
 
@@ -294,10 +319,10 @@ class MusicPlayer:
                         await self.text_channel.send(
                             f"超過 {self.INACTIVITY_TIMEOUT_SECONDS // 60} 分鐘沒有活動了喔...我該走了嗎...？🥺"
                         )
-                    await self.stop(self.text_channel if self.text_channel else self.guild, ephemeral=False, is_inactivity=True)
-                    break
+                    await self.stop(self.text_channel if self.text_channel else self.guild, ephemeral=False, is_inactivity=True) 
+                    break 
         except asyncio.CancelledError:
-            pass
+            pass 
 
     async def enqueue(self, track: Track, *, at_front: bool = False) -> None:
         async with self._lock:
@@ -339,7 +364,7 @@ class MusicPlayer:
                             print(f"無法播放進場音效: {e}")
                 elif self.voice.channel != voice_state.channel:
                     await self.voice.move_to(voice_state.channel)
-
+                
                 self.reset_inactivity_timer()
             except RuntimeError:
                 await _respond(
@@ -357,7 +382,7 @@ class MusicPlayer:
         voice = self.voice
         if voice and voice.is_playing():
             return
-
+        
         self.reset_inactivity_timer()
         if not self.current and self.queue:
             await self._play_next()
@@ -366,11 +391,9 @@ class MusicPlayer:
         async with self._lock:
             if not self.queue:
                 self.current = None
-                await self._maybe_cleanup_message(is_queue_empty=True)
-
-                # --- START MODIFICATION ---
+                await self._maybe_cleanup_message(is_queue_empty=True) 
+                
                 if self.voice and self.voice.is_connected():
-                    # Play goodbye sound before disconnecting
                     exit_audio_path = "Discord-Music-Bot-main/music/晚安.mp3"
                     if os.path.exists(exit_audio_path):
                         try:
@@ -384,16 +407,15 @@ class MusicPlayer:
                             source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(exit_audio_path))
                             if not self.voice.is_playing(): # Only play if not already playing something (e.g., from an error)
                                 self.voice.play(source, after=after_exit_sound)
-                                await asyncio.wait_for(finished_playing_event.wait(), timeout=10.0)
+                                await asyncio.wait_for(finished_playing_event.wait(), timeout=10.0) 
                         except Exception as e:
                             print(f"[Playback End] Error during goodbye sound playback: {e}")
-
+                    
                     if self._inactivity_timer and not self._inactivity_timer.done():
                         self._inactivity_timer.cancel()
                     await self.voice.disconnect(force=True)
                     if self.text_channel:
                          await self.text_channel.send("播放清單結束了喔...我休息了喔...晚安...💤")
-                # --- END MODIFICATION ---
                 self.reset_inactivity_timer()
                 return
 
@@ -402,7 +424,7 @@ class MusicPlayer:
                 self.history.append(self.current)
                 self.history = self.history[-25:]
             self.current = track
-
+        
         self.reset_inactivity_timer()
         await self._start_track(track)
 
@@ -417,9 +439,9 @@ class MusicPlayer:
         if not voice:
             return
 
+        # --- START MODIFICATION: pytubefix stream URL might be direct ---
+        # If stream_url is None, try to resolve it again (e.g., if it expired)
         if not track.stream_url:
-            # 使用 pytubefix 時，fetch_tracks 應該已經提供了 stream_url。
-            # 但如果因為某些原因為 None，我們還是嘗試解析一次。
             stream_url = await resolve_stream_url(track)
             if not stream_url:
                 if self.text_channel:
@@ -427,6 +449,7 @@ class MusicPlayer:
                 await self._play_next()
                 return
             track.stream_url = stream_url
+        # --- END MODIFICATION ---
 
         def after_playback(error: Optional[Exception]) -> None:
             if error and self.text_channel:
@@ -476,12 +499,12 @@ class MusicPlayer:
         print(f"[Stop] Initiating stop command. Voice client connected: {voice and voice.is_connected()}. From inactivity: {is_inactivity}")
 
         response_target = interaction_or_ctx
-        is_interaction_deferred = False
+        is_interaction_deferred = False 
 
         if isinstance(interaction_or_ctx, discord.Interaction) and not interaction_or_ctx.response.is_done():
             await interaction_or_ctx.response.defer(ephemeral=ephemeral)
             response_target = interaction_or_ctx.followup
-            is_interaction_deferred = True
+            is_interaction_deferred = True 
         print(f"[Stop] Interaction deferred: {is_interaction_deferred}")
 
         if self._inactivity_timer:
@@ -490,15 +513,15 @@ class MusicPlayer:
             print("[Stop] Inactivity timer cancelled.")
 
         if voice and voice.is_playing():
-            voice.stop()
+            voice.stop() 
             print("[Stop] Current playback stopped.")
         else:
             print("[Stop] No current playback to stop or voice client not available.")
 
-        exit_audio_path = "Discord-Music-Bot-main/music/晚安.mp3"
+        exit_audio_path = "Discord-Music-Bot-main/music/晚安.mp3" 
         print(f"[Stop] Checking goodbye sound path: {exit_audio_path}. Exists: {os.path.exists(exit_audio_path)}")
-
-        goodbye_sound_played = False
+        
+        goodbye_sound_played = False 
 
         if voice and voice.is_connected() and os.path.exists(exit_audio_path):
             print(f"[Stop] Voice client connected and goodbye sound file exists. Attempting to play goodbye sound.")
@@ -513,16 +536,16 @@ class MusicPlayer:
                     finished_playing_event.set()
 
                 source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(exit_audio_path))
-
+                
                 if not voice.is_connected():
                     print("[Stop] Voice client disconnected just before playing goodbye sound. Skipping.")
                     finished_playing_event.set()
                 elif not voice.is_playing(): # Ensure we don't interrupt existing playback if any (e.g., a rapid stop after another track started)
                     voice.play(source, after=after_exit_sound)
-                    goodbye_sound_played = True
+                    goodbye_sound_played = True 
                     print("[Stop] Goodbye sound initiated. Waiting for completion...")
                     try:
-                        await asyncio.wait_for(finished_playing_event.wait(), timeout=10.0)
+                        await asyncio.wait_for(finished_playing_event.wait(), timeout=10.0) 
                         print("[Stop] Successfully waited for goodbye sound to complete.")
                     except asyncio.TimeoutError:
                         print("[Stop] Waiting for goodbye sound timed out (10s). Proceeding with disconnection.")
@@ -533,7 +556,7 @@ class MusicPlayer:
                 print(f"[Stop] Unexpected error during goodbye sound playback attempt: {e}")
         else:
             print("[Stop] Skipping goodbye sound: Voice not connected or file not found.")
-
+        
         if voice and voice.is_connected():
             await voice.disconnect(force=True)
             print("[Stop] Disconnected from voice channel.")
@@ -544,16 +567,16 @@ class MusicPlayer:
             self.queue.clear()
             self.current = None
             print("[Stop] Queue and current track cleared.")
-
-        await self._maybe_cleanup_message(is_manual_stop=True, is_inactivity=is_inactivity)
+        
+        await self._maybe_cleanup_message(is_manual_stop=True, is_inactivity=is_inactivity) 
         print("[Stop] Control message cleaned up.")
-
+        
         final_message = "停止播放並清空播放清單了喔...你還會回來找我的對吧...？💖"
         if goodbye_sound_played and not is_inactivity: # Only use this message if goodbye was played AND it's not an inactivity stop (which has its own message)
-            final_message = "我休息了喔...期待再見面...💖"
+            final_message = "我休息了喔...期待再見面...💖" 
         elif is_inactivity:
             final_message = f"超過 {self.INACTIVITY_TIMEOUT_SECONDS // 60} 分鐘沒有活動了喔...我先休息了...晚安...💤"
-
+        
         await _respond(response_target, final_message, ephemeral=ephemeral)
         print("[Stop] Final response sent.")
 
@@ -593,8 +616,8 @@ class MusicPlayer:
     async def adjust_volume(self, delta: float) -> float:
         return await self.set_volume(self.volume + delta)
 
-    async def _send_now_playing(self, track: Track, *, force_new: bool = False) -> None:
-        channel = self.text_channel
+    async def _send_now_playing(self1, track: Track, *, force_new: bool = False) -> None:
+        channel = self1.text_channel
         if channel is None:
             return
         embed = discord.Embed(title="正在播放喔...🎵", description=f"[{track.title}]({track.webpage_url})", color=0x55acee)
@@ -604,50 +627,44 @@ class MusicPlayer:
             minutes, seconds = divmod(duration, 60)
             embed.add_field(name="長度", value=f"{minutes}:{seconds:02d}", inline=True)
         embed.add_field(name="點歌人", value=f"<@{track.requester_id}> (是你點的嗎...？)", inline=True)
-        embed.add_field(name="音量", value=f"{int(self.volume * 100)}%", inline=True)
+        embed.add_field(name="音量", value=f"{int(self1.volume * 100)}%", inline=True)
         if track.thumbnail:
             embed.set_thumbnail(url=track.thumbnail)
-        embed.set_footer(text=f"重複模式: {self.repeat_mode.value} | 播放清單: {len(self.queue)} 首歌 (你還會繼續聽的對吧...？)")
+        embed.set_footer(text=f"重複模式: {self1.repeat_mode.value} | 播放清單: {len(self1.queue)} 首歌 (你還會繼續聽的對吧...？)")
 
-        self.controls_view = PlayerControls(self)
-        if force_new and self.control_message:
+        self1.controls_view = PlayerControls(self1)
+        if force_new and self1.control_message:
             try:
-                await self.control_message.delete()
+                await self1.control_message.delete()
             except discord.HTTPException:
                 pass
-            self.control_message = None
-        if self.control_message:
+            self1.control_message = None
+        if self1.control_message:
             try:
-                await self.control_message.edit(embed=embed, view=self.controls_view)
+                await self1.control_message.edit(embed=embed, view=self1.controls_view)
                 return
             except discord.HTTPException:
-                self.control_message = None
-        self.control_message = await channel.send(embed=embed, view=self.controls_view)
-        self.reset_inactivity_timer()
+                self1.control_message = None
+        self1.control_message = await channel.send(embed=embed, view=self1.controls_view)
+        self1.reset_inactivity_timer()
 
     async def _maybe_cleanup_message(self, *, is_queue_empty: bool = False, is_manual_stop: bool = False, is_inactivity: bool = False) -> None:
         if self.control_message:
             try:
-                # Decide message based on context
                 if is_manual_stop:
                     message_content = "停止播放並清空播放清單了喔...你還會回來找我的對吧...？💖"
                 elif is_queue_empty:
-                    # This message is now sent directly in _play_next after goodbye sound
-                    message_content = "播放清單結束了喔...但我們的故事還沒結束...💖"
-                elif is_inactivity:
-                    message_content = "我休息了喔...期待再見面...💖"
-                else:
-                    message_content = "我休息了喔...期待再見面...💖"
-
-                # If it's a queue empty scenario, and the goodbye sound was handled,
-                # we don't need to edit the control message with a generic "queue ended"
-                # as a more specific "goodbye" message is sent.
-                # However, we still need to clear the control message itself.
-                if not is_queue_empty: # Only edit if not queue_empty, otherwise just delete
+                    message_content = "播放清單結束了喔...但我們的故事還沒結束...💖" 
+                elif is_inactivity: 
+                    message_content = "我休息了喔...期待再見面...💖" 
+                else: 
+                    message_content = "我休息了喔...期待再見面...💖" 
+                
+                if not is_queue_empty: 
                     await self.control_message.edit(content=message_content, embed=None, view=None)
             except discord.HTTPException:
-                pass
-            self.control_message = None
+                pass 
+            self.control_message = None 
 
     def formatted_queue(self) -> List[str]:
         formatted = []
