@@ -1,0 +1,24 @@
+server:
+  port: 2333                  # Lavalink 伺服器將監聽的端口。
+  address: 0.0.0.0            # 0.0.0.0 表示監聽所有可用的網絡接口。
+
+lavalink:
+  server:
+    password: "Durazno6570" # <--- **非常重要！請將 "MySuperSecretPassword" 替換成您自己的安全密碼**
+    sources:
+      youtube: true
+      soundcloud: true
+      bandcamp: true
+      twitch: true
+      vimeo: true
+    bufferDurationMs: 400
+    frameBufferMs: 5000
+
+logging:
+  file:
+    max-history: 30
+    max-size: 1GB
+  path: ./logs/
+  level:
+    root: INFO
+    lavalink: INFO
