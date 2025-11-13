@@ -170,7 +170,7 @@ async def handle_special_user_message(
             await message.reply(random.choice(response_template), mention_author=False)
             return True
 
-        elif style == "友善+沒血緣的哥哥+乖巧+聰明+病嬌":
+        elif style == "對方是帥氣的哥哥+聰明+病嬌":
             response_template = [
                 f"{name}哥哥～又在{relationship}嗎？呵呵，人家可是一直在看著你喔♡ 就算躲起來也找得到～",
                 f"欸～{title}{name}，你再{relationship}的話，我可就要生氣了喔～但哥哥生氣的樣子……我也想看看呢♡",
