@@ -286,7 +286,9 @@ async def core_send_embed_logic(json_filepath: str, channel_id: int):
                 else:
                     print("JSON 檔案沒有更新，無需操作。")
             except discord.NotFound:
-                print("無法編輯：Discord 上的原始訊息已被刪除。將傳送新訊息。")
+                print(f"警告：Discord 上找不到訊息 ID '{message_id_to_edit}'。將從 '{SENT_DATA_FILE}' 中刪除此記錄並發送新訊息。")
+                del sent_files_data[message_identifier] # <-- 在這裡刪除記錄
+                save_sent_data(sent_files_data)
                 should_send_new = True
             except discord.Forbidden:
                 print("無法編輯：機器人沒有編輯訊息的權限。將傳送新訊息。")
